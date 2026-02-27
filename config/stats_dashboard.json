@@ -1,0 +1,23 @@
+{
+  "metrics_path": "",
+  "stats": [
+    { "key": "trainee_win_rate_vs_gapmaximizer", "label": "Trainee win rate vs GapMaximizer (cumulative)", "graph_type": "line" },
+    { "key": "loss", "label": "Loss", "graph_type": "line" },
+    { "key": "p1_win_rate", "label": "P1 win rate", "graph_type": "line" },
+    { "key": "p2_win_rate", "label": "P2 win rate", "graph_type": "line" },
+    { "key": "draw_rate", "label": "Draw rate", "graph_type": "line" },
+    { "key": "episode_turns", "label": "Turns per episode", "graph_type": "line" },
+    { "key": "ppo_policy_loss", "label": "PPO policy loss", "graph_type": "line" },
+    { "key": "ppo_value_loss", "label": "PPO value loss", "graph_type": "line" },
+    { "key": "ppo_entropy", "label": "PPO entropy", "graph_type": "line" },
+    { "key": "ppo_ratio_mean", "label": "PPO ratio mean (debug)", "graph_type": "line" },
+    { "key": "ppo_ratio_min", "label": "PPO ratio min", "graph_type": "line" },
+    { "key": "ppo_ratio_max", "label": "PPO ratio max", "graph_type": "line" },
+    { "key": "ppo_clip_fraction", "label": "PPO clip fraction (debug)", "graph_type": "line" },
+    { "key": "ppo_advantage_mean", "label": "PPO advantage mean (debug)", "graph_type": "line" },
+    { "key": "ppo_advantage_std", "label": "PPO advantage std", "graph_type": "line" },
+    { "key": "dqn_q_mean", "label": "DQN Q mean (debug)", "graph_type": "line" },
+    { "key": "dqn_td_abs_mean", "label": "DQN TD abs mean (debug)", "graph_type": "line" },
+    { "key": "dqn_grad_norm", "label": "DQN grad norm (debug)", "graph_type": "line" }
+  ]
+}
