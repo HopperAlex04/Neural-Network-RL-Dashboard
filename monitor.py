@@ -44,7 +44,7 @@ def _parse_args():
 def _build_plot_for_stat(stat_key: str, label: str, graph_type: str) -> str:
     """Create one plot with X/Y axes and the appropriate series type. Returns series tag."""
     if stat_key == TRANEE_WIN_RATE_VS_GAPMAXIMIZER_KEY:
-        x_label = "Game vs GapMaximizer"
+        x_label = "Round"
     elif is_training_only_stat(stat_key):
         x_label = "Training episode"
     else:

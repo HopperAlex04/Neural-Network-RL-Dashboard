@@ -1,7 +1,7 @@
 {
   "metrics_path": "",
   "stats": [
-    { "key": "trainee_win_rate_vs_gapmaximizer", "label": "Trainee win rate vs GapMaximizer (cumulative)", "graph_type": "line" },
+    { "key": "trainee_win_rate_vs_gapmaximizer", "label": "Trainee win rate vs GapMaximizer (per round, avg both seats)", "graph_type": "line" },
     { "key": "loss", "label": "Loss", "graph_type": "line" },
     { "key": "p1_win_rate", "label": "P1 win rate", "graph_type": "line" },
     { "key": "p2_win_rate", "label": "P2 win rate", "graph_type": "line" },

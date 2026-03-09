@@ -7,12 +7,13 @@ from __future__ import annotations
 
 import json
 import re
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
 DEFAULT_MAX_POINTS = 10_000
 
-# Derived stat: cumulative trainee win rate vs GapMaximizer only (from p1_wins/p2_wins by position)
+# Derived stat: trainee win rate vs GapMaximizer per round (x = round, y = average of both seats' final win rate)
 TRANEE_WIN_RATE_VS_GAPMAXIMIZER_KEY = "trainee_win_rate_vs_gapmaximizer"
 
 # Stats that only make sense for training episodes (exclude validation); x-axis = training episode index
@@ -87,12 +88,8 @@ class MetricsReader:
         self._records_read: dict[Path, int] = {}
         # Single source of truth for global episode index (strictly increasing, one per record)
         self._global_episode: int = 0
-        # Derived: cumulative trainee win rate vs GapMaximizer (only from GapMaximizer logs, trainee position from filename)
-        self._trainee_wr_total_wins: int = 0
-        self._trainee_wr_total_games: int = 0
-        self._trainee_wr_prev_per_file: dict[Path, tuple[int, int]] = {}
-        # Explicit x-axis for derived series: game index vs GapMaximizer (0, 1, 2, ...), independent of global episode
-        self._trainee_wr_game_index: int = 0
+        # Derived: trainee win rate vs GapMaximizer per round; one wr per file (trainee_first / trainee_second), averaged per round
+        self._trainee_wr_by_file: dict[Path, tuple[int, float]] = {}  # path -> (round_num, wr)
         # Training-only stats: x-axis = training episode count (excludes validation episodes)
         self._training_episode_index: int = 0
 
@@ -117,6 +114,11 @@ class MetricsReader:
             path_index = self._paths.index(path)
             offset = sum(self._records_read.get(self._paths[i], 0) for i in range(path_index))
             try:
+                # Per-round tracking for trainee win rate vs GapMaximizer (one point per round)
+                round_wins: int | None = None
+                round_games: int | None = None
+                round_num = _round_sort_key(path)[0] if _is_gapmaximizer_path(path) else 0
+
                 with open(path, encoding="utf-8") as f:
                     f.seek(self._positions[path])
                     new_count = 0
@@ -133,7 +135,7 @@ class MetricsReader:
                         # Only training episodes (no validation) for training-only stats
                         validating = record.get("validating", False) is True
 
-                        # Derived stat: cumulative trainee win rate vs GapMaximizer only
+                        # Derived stat: trainee win rate vs GapMaximizer per round (one point per round file)
                         if (
                             TRANEE_WIN_RATE_VS_GAPMAXIMIZER_KEY in self.stat_keys
                             and _is_gapmaximizer_path(path)
@@ -149,21 +151,8 @@ class MetricsReader:
                             ):
                                 trainee_wins = int(float(p1_wins)) if trainee_first else int(float(p2_wins))
                                 games = int(float(episode)) + 1
-                                prev = self._trainee_wr_prev_per_file.get(path, (0, 0))
-                                delta_wins = trainee_wins - prev[0]
-                                delta_games = games - prev[1]
-                                self._trainee_wr_total_wins += delta_wins
-                                self._trainee_wr_total_games += delta_games
-                                self._trainee_wr_prev_per_file[path] = (trainee_wins, games)
-                                if self._trainee_wr_total_games > 0:
-                                    wr = self._trainee_wr_total_wins / self._trainee_wr_total_games
-                                    x_list, y_list = self._series[TRANEE_WIN_RATE_VS_GAPMAXIMIZER_KEY]
-                                    x_list.append(float(self._trainee_wr_game_index))  # x = game vs GapMaximizer (0, 1, 2, ...)
-                                    y_list.append(wr)
-                                    self._trainee_wr_game_index += 1
-                                    if len(y_list) > self.max_points:
-                                        x_list.pop(0)
-                                        y_list.pop(0)
+                                round_wins = trainee_wins
+                                round_games = games
 
                         # Normal stats (raw keys from record)
                         for key in self.stat_keys:
@@ -190,10 +179,36 @@ class MetricsReader:
                         # Advance global episode exactly once per record
                         new_count += 1
                         self._global_episode += 1
+
+                    # Store this file's final win rate (we'll average by round after processing all paths)
+                    if (
+                        TRANEE_WIN_RATE_VS_GAPMAXIMIZER_KEY in self.stat_keys
+                        and _is_gapmaximizer_path(path)
+                        and round_games is not None
+                        and round_games > 0
+                    ):
+                        wr = round_wins / round_games
+                        self._trainee_wr_by_file[path] = (round_num, wr)
+
                     self._positions[path] = f.tell()
                     self._records_read[path] = self._records_read.get(path, 0) + new_count
             except OSError:
                 pass
+
+        # Build trainee win rate series: average both seats per round, then sort by round
+        if TRANEE_WIN_RATE_VS_GAPMAXIMIZER_KEY in self.stat_keys and self._trainee_wr_by_file:
+            by_round: dict[int, list[float]] = defaultdict(list)
+            for (_path, (r, w)) in self._trainee_wr_by_file.items():
+                by_round[r].append(w)
+            x_list: list[float] = []
+            y_list: list[float] = []
+            for r in sorted(by_round.keys()):
+                x_list.append(float(r))
+                y_list.append(sum(by_round[r]) / len(by_round[r]))
+            if len(y_list) > self.max_points:
+                x_list = x_list[-self.max_points:]
+                y_list = y_list[-self.max_points:]
+            self._series[TRANEE_WIN_RATE_VS_GAPMAXIMIZER_KEY] = (x_list, y_list)
 
     def get_series(self, stat_key: str) -> tuple[list[float], list[float]]:
         """Return (x_list, y_list) for the given stat key. Copies to avoid mutation."""

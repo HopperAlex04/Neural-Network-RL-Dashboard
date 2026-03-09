@@ -51,3 +51,18 @@ Edit `config/stats_dashboard.json` to:
 - **Change graph type** — Use `"line"`, `"scatter"`, `"bar"`, or `"histogram"` per stat.
 
 The default config includes main metrics (loss, win rates, draw rate, episode turns) and debug stats (PPO policy/value loss, entropy, ratio, clip fraction, advantage; DQN Q mean, TD, grad norm). Stats missing from the current log (e.g. PPO keys in a DQN run) simply show no data.
+
+### Export graphs as images (after training)
+
+To generate stylized, publication-ready graph images from a completed run (same data and config as the live dashboard):
+
+```bash
+python export_graphs.py --metrics path/to/metrics_logs [--output exported_graphs] [--format png] [--dpi 150]
+```
+
+- **`--metrics`** — Path to the run’s metrics JSONL file or directory (required).
+- **`--output`** — Directory for image files (default: `exported_graphs`).
+- **`--format`** — `png`, `svg`, `pdf`, or comma-separated (e.g. `png,svg`), or `all` for PNG + SVG + PDF.
+- **`--dpi`** — DPI for PNG output (default: 150).
+
+One image per configured stat is written (e.g. `loss.png`, `p1_win_rate.png`). Training-only stats use “Training episode” on the x-axis; the trainee vs GapMaximizer series uses “Game vs GapMaximizer”. Empty series are skipped.
