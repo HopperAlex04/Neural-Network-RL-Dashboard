@@ -35,6 +35,39 @@ LINE_WIDTH = 1.8
 GRID_ALPHA = 0.4
 PRIMARY_COLOR = "#2563eb"   # blue
 SECONDARY_COLOR = "#059669" # teal (for scatter/bar accent)
+# Rolling average for noisy metrics (same-graph overlay)
+ROLLING_WINDOW = 20
+RAW_ALPHA = 0.35  # transparency for raw series when rolling avg is shown
+ROLLING_LINE_WIDTH = 2.0   # slightly thicker so trend stands out
+STD_FILL_ALPHA = 0.25  # transparency for ±1 std shaded region
+
+
+def _rolling_average(x: list[float], y: list[float], window: int) -> tuple[list[float], list[float]]:
+    """Compute rolling mean of y (same length); x is returned as-is for alignment."""
+    if not y or window < 1:
+        return (list(x), list(y))
+    n = len(y)
+    out_y: list[float] = []
+    for i in range(n):
+        start = max(0, i - window + 1)
+        chunk = y[start : i + 1]
+        out_y.append(sum(chunk) / len(chunk))
+    return (list(x), out_y)
+
+
+def _rolling_std(y: list[float], window: int) -> list[float]:
+    """Compute rolling standard deviation of y (same length as y)."""
+    if not y or window < 1:
+        return list(y) if y else []
+    n = len(y)
+    out: list[float] = []
+    for i in range(n):
+        start = max(0, i - window + 1)
+        chunk = y[start : i + 1]
+        m = sum(chunk) / len(chunk)
+        variance = sum((v - m) ** 2 for v in chunk) / len(chunk)
+        out.append(variance ** 0.5)
+    return out
 
 
 def _x_label(stat_key: str) -> str:
@@ -45,19 +78,28 @@ def _x_label(stat_key: str) -> str:
     return "Episode"
 
 
-def _plot_series(ax, stat_key: str, label: str, graph_type: str, x: list[float], y: list[float]) -> None:
+def _plot_series(
+    ax,
+    stat_key: str,
+    label: str,
+    graph_type: str,
+    x: list[float],
+    y: list[float],
+    *,
+    alpha: float = 1.0,
+) -> None:
     if not x or not y:
         return
     if graph_type == "line":
-        ax.plot(x, y, color=PRIMARY_COLOR, linewidth=LINE_WIDTH, label=label)
+        ax.plot(x, y, color=PRIMARY_COLOR, linewidth=LINE_WIDTH, alpha=alpha, label=label)
     elif graph_type == "scatter":
-        ax.scatter(x, y, color=PRIMARY_COLOR, s=8, alpha=0.7, label=label)
+        ax.scatter(x, y, color=PRIMARY_COLOR, s=8, alpha=min(alpha, 0.7), label=label)
     elif graph_type == "bar":
         ax.bar(x, y, color=PRIMARY_COLOR, alpha=0.8, width=0.8, label=label)
     elif graph_type == "histogram":
         ax.hist(y, bins=min(50, max(10, len(y) // 5)), color=PRIMARY_COLOR, alpha=0.8, edgecolor="white", linewidth=0.3, label=label)
     else:
-        ax.plot(x, y, color=PRIMARY_COLOR, linewidth=LINE_WIDTH, label=label)
+        ax.plot(x, y, color=PRIMARY_COLOR, linewidth=LINE_WIDTH, alpha=alpha, label=label)
 
 
 def _save_figure(
@@ -82,7 +124,28 @@ def _save_figure(
     fig.patch.set_facecolor("white")
     ax.set_facecolor("#fafafa")
 
-    _plot_series(ax, stat_key, label, graph_type, x, y)
+    if graph_type in ("line", "scatter"):
+        # Raw series (semi-transparent) + shaded ±1 std + rolling average (solid) on same graph
+        _plot_series(ax, stat_key, "Raw", graph_type, x, y, alpha=RAW_ALPHA)
+        x_roll, y_roll = _rolling_average(x, y, ROLLING_WINDOW)
+        std_roll = _rolling_std(y, ROLLING_WINDOW)
+        ax.fill_between(
+            x_roll,
+            [a - s for a, s in zip(y_roll, std_roll)],
+            [a + s for a, s in zip(y_roll, std_roll)],
+            color=PRIMARY_COLOR,
+            alpha=STD_FILL_ALPHA,
+            label=f"±1 std ({ROLLING_WINDOW})",
+        )
+        ax.plot(
+            x_roll,
+            y_roll,
+            color=PRIMARY_COLOR,
+            linewidth=ROLLING_LINE_WIDTH,
+            label=f"Rolling avg ({ROLLING_WINDOW})",
+        )
+    else:
+        _plot_series(ax, stat_key, label, graph_type, x, y)
 
     if graph_type == "histogram":
         ax.set_xlabel(label, fontsize=FONT_SIZE_LABELS)

@@ -65,4 +65,15 @@ python export_graphs.py --metrics path/to/metrics_logs [--output exported_graphs
 - **`--format`** — `png`, `svg`, `pdf`, or comma-separated (e.g. `png,svg`), or `all` for PNG + SVG + PDF.
 - **`--dpi`** — DPI for PNG output (default: 150).
 
-One image per configured stat is written (e.g. `loss.png`, `p1_win_rate.png`). Training-only stats use “Training episode” on the x-axis; the trainee vs GapMaximizer series uses “Game vs GapMaximizer”. Empty series are skipped.
+One image per configured stat is written (e.g. `loss.png`, `p1_win_rate.png`). Line and scatter plots overlay a rolling average on the raw (semi-transparent) series. Training-only stats use “Training episode” on the x-axis; the trainee vs GapMaximizer series uses “Game vs GapMaximizer”. Empty series are skipped.
+
+#### Try it with sample data
+
+To see what the exported graphs look like (including rolling averages) without real training data:
+
+```bash
+python generate_sample_metrics.py
+python export_graphs.py --metrics sample_data --output exported_graphs
+```
+
+This creates `sample_data/metrics_round_0.jsonl` with noisy, training-like curves, then exports one graph per stat to `exported_graphs/`. Open the PNGs to compare raw vs rolling-average traces.
