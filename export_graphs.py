@@ -40,6 +40,11 @@ ROLLING_WINDOW = 20
 RAW_ALPHA = 0.35  # transparency for raw series when rolling avg is shown
 ROLLING_LINE_WIDTH = 2.0   # slightly thicker so trend stands out
 STD_FILL_ALPHA = 0.25  # transparency for ±1 std shaded region
+# Colors for multiple runs (one per metrics folder)
+RUN_COLORS = [
+    "#2563eb", "#059669", "#dc2626", "#7c3aed", "#ea580c",
+    "#0891b2", "#ca8a04", "#db2777", "#4f46e5", "#0d9488",
+]
 
 
 def _rolling_average(x: list[float], y: list[float], window: int) -> tuple[list[float], list[float]]:
@@ -78,6 +83,13 @@ def _x_label(stat_key: str) -> str:
     return "Episode"
 
 
+def _run_label(metrics_path: Path) -> str:
+    """Short label for a metrics path (folder name or file stem)."""
+    p = Path(metrics_path).resolve()
+    if p.is_file():
+        return p.stem
+    return p.name or str(p)
+
 def _plot_series(
     ax,
     stat_key: str,
@@ -87,19 +99,21 @@ def _plot_series(
     y: list[float],
     *,
     alpha: float = 1.0,
+    color: str | None = None,
 ) -> None:
     if not x or not y:
         return
+    c = color or PRIMARY_COLOR
     if graph_type == "line":
-        ax.plot(x, y, color=PRIMARY_COLOR, linewidth=LINE_WIDTH, alpha=alpha, label=label)
+        ax.plot(x, y, color=c, linewidth=LINE_WIDTH, alpha=alpha, label=label)
     elif graph_type == "scatter":
-        ax.scatter(x, y, color=PRIMARY_COLOR, s=8, alpha=min(alpha, 0.7), label=label)
+        ax.scatter(x, y, color=c, s=8, alpha=min(alpha, 0.7), label=label)
     elif graph_type == "bar":
-        ax.bar(x, y, color=PRIMARY_COLOR, alpha=0.8, width=0.8, label=label)
+        ax.bar(x, y, color=c, alpha=0.8, width=0.8, label=label)
     elif graph_type == "histogram":
-        ax.hist(y, bins=min(50, max(10, len(y) // 5)), color=PRIMARY_COLOR, alpha=0.8, edgecolor="white", linewidth=0.3, label=label)
+        ax.hist(y, bins=min(50, max(10, len(y) // 5)), color=c, alpha=0.8, edgecolor="white", linewidth=0.3, label=label)
     else:
-        ax.plot(x, y, color=PRIMARY_COLOR, linewidth=LINE_WIDTH, alpha=alpha, label=label)
+        ax.plot(x, y, color=c, linewidth=LINE_WIDTH, alpha=alpha, label=label)
 
 
 def _save_figure(
@@ -107,14 +121,15 @@ def _save_figure(
     stat_key: str,
     label: str,
     graph_type: str,
-    x: list[float],
-    y: list[float],
+    series_list: list[tuple[str, list[float], list[float]]],
     formats: list[str],
     dpi: int,
 ) -> list[Path]:
-    """Build one figure per stat and save in requested formats. Returns paths written."""
+    """Build one figure per stat and save in requested formats. series_list = [(run_label, x, y), ...]."""
     written: list[Path] = []
-    if not x and not y:
+    # Drop runs with no data
+    series_list = [(run_label, x, y) for run_label, x, y in series_list if x and y]
+    if not series_list:
         return written
 
     # Safe filename from stat key
@@ -125,27 +140,42 @@ def _save_figure(
     ax.set_facecolor("#fafafa")
 
     if graph_type in ("line", "scatter"):
-        # Raw series (semi-transparent) + shaded ±1 std + rolling average (solid) on same graph
-        _plot_series(ax, stat_key, "Raw", graph_type, x, y, alpha=RAW_ALPHA)
-        x_roll, y_roll = _rolling_average(x, y, ROLLING_WINDOW)
-        std_roll = _rolling_std(y, ROLLING_WINDOW)
-        ax.fill_between(
-            x_roll,
-            [a - s for a, s in zip(y_roll, std_roll)],
-            [a + s for a, s in zip(y_roll, std_roll)],
-            color=PRIMARY_COLOR,
-            alpha=STD_FILL_ALPHA,
-            label=f"±1 std ({ROLLING_WINDOW})",
-        )
-        ax.plot(
-            x_roll,
-            y_roll,
-            color=PRIMARY_COLOR,
-            linewidth=ROLLING_LINE_WIDTH,
-            label=f"Rolling avg ({ROLLING_WINDOW})",
-        )
+        single_run = len(series_list) == 1
+        for idx, (run_label, x, y) in enumerate(series_list):
+            color = PRIMARY_COLOR if single_run else RUN_COLORS[idx % len(RUN_COLORS)]
+            raw_label = "Raw" if single_run else None
+            _plot_series(ax, stat_key, raw_label, graph_type, x, y, alpha=RAW_ALPHA, color=color)
+            x_roll, y_roll = _rolling_average(x, y, ROLLING_WINDOW)
+            std_roll = _rolling_std(y, ROLLING_WINDOW)
+            if single_run:
+                ax.fill_between(
+                    x_roll,
+                    [a - s for a, s in zip(y_roll, std_roll)],
+                    [a + s for a, s in zip(y_roll, std_roll)],
+                    color=color,
+                    alpha=STD_FILL_ALPHA,
+                    label=f"±1 std ({ROLLING_WINDOW})",
+                )
+            else:
+                ax.fill_between(
+                    x_roll,
+                    [a - s for a, s in zip(y_roll, std_roll)],
+                    [a + s for a, s in zip(y_roll, std_roll)],
+                    color=color,
+                    alpha=STD_FILL_ALPHA,
+                )
+            line_label = f"Rolling avg ({ROLLING_WINDOW})" if single_run else run_label
+            ax.plot(
+                x_roll,
+                y_roll,
+                color=color,
+                linewidth=ROLLING_LINE_WIDTH,
+                label=line_label,
+            )
     else:
-        _plot_series(ax, stat_key, label, graph_type, x, y)
+        for idx, (run_label, x, y) in enumerate(series_list):
+            color = RUN_COLORS[idx % len(RUN_COLORS)]
+            _plot_series(ax, stat_key, run_label, graph_type, x, y, color=color)
 
     if graph_type == "histogram":
         ax.set_xlabel(label, fontsize=FONT_SIZE_LABELS)
@@ -185,8 +215,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--metrics",
         type=Path,
+        nargs="+",
         required=True,
-        help="Path to metrics JSONL file or directory containing *.jsonl",
+        metavar="PATH",
+        help="One or more paths to metrics JSONL file(s) or directory(ies) containing *.jsonl. Each path is one run; all runs are overlaid on the same graph per stat.",
     )
     parser.add_argument(
         "--output",
@@ -217,10 +249,11 @@ def main() -> None:
         print(f"Config error: {e}")
         return
 
-    metrics_path = Path(args.metrics)
-    if not metrics_path.exists():
-        print(f"Metrics path does not exist: {metrics_path}")
-        return
+    metrics_paths = [Path(p) for p in args.metrics]
+    for p in metrics_paths:
+        if not p.exists():
+            print(f"Metrics path does not exist: {p}")
+            return
 
     if args.format == "all":
         formats = ["png", "svg", "pdf"]
@@ -230,16 +263,32 @@ def main() -> None:
     out_dir = Path(args.output)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    reader = MetricsReader(stat_keys=config.stat_keys(), max_points=EXPORT_MAX_POINTS)
-    reader.add_path(metrics_path)
-    reader.poll()
+    # Load each metrics path into its own reader; aggregate by stat as (run_label, x, y) per stat
+    stat_keys = config.stat_keys()
+    series_by_stat: dict[str, list[tuple[str, list[float], list[float]]]] = {
+        k: [] for k in stat_keys
+    }
+    for metrics_path in metrics_paths:
+        reader = MetricsReader(stat_keys=stat_keys, max_points=EXPORT_MAX_POINTS)
+        reader.add_path(metrics_path)
+        reader.poll()
+        run_label = _run_label(metrics_path)
+        for key in stat_keys:
+            x, y = reader.get_series(key)
+            series_by_stat[key].append((run_label, x, y))
 
     graph_types = {s.key: s.graph_type for s in config.stats}
     written: list[Path] = []
     for s in config.stats:
-        x, y = reader.get_series(s.key)
+        series_list = series_by_stat.get(s.key, [])
         paths = _save_figure(
-            out_dir, s.key, s.label, graph_types.get(s.key, "line"), x, y, formats, args.dpi
+            out_dir,
+            s.key,
+            s.label,
+            graph_types.get(s.key, "line"),
+            series_list,
+            formats,
+            args.dpi,
         )
         written.extend(paths)
 
